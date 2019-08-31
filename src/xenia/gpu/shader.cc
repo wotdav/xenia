@@ -11,6 +11,8 @@
 
 #include <cinttypes>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 
 #include "xenia/base/filesystem.h"
 #include "xenia/base/math.h"
@@ -21,6 +23,15 @@
 namespace xe {
 namespace gpu {
 using namespace ucode;
+
+static std::string MakeShaderDumpPath(const std::string& base_path,
+                                      const char* path_prefix,
+                                      uint64_t data_hash) {
+  std::ostringstream stream;
+  stream << base_path << "/shader_" << path_prefix << '_' << std::uppercase
+         << std::setfill('0') << std::setw(16) << std::hex << data_hash;
+  return stream.str();
+}
 
 Shader::Shader(ShaderType shader_type, uint64_t ucode_data_hash,
                const uint32_t* ucode_dwords, size_t ucode_dword_count)
@@ -49,12 +60,20 @@ std::pair<std::string, std::string> Shader::Dump(const std::string& base_path,
     xe::filesystem::CreateFolder(target_path);
   }
 
-  char txt_file_name[kMaxPath];
-  std::snprintf(txt_file_name, xe::countof(txt_file_name),
-                "%s/shader_%s_%.16" PRIX64 ".%s", base_path.c_str(),
-                path_prefix, ucode_data_hash_,
-                shader_type_ == ShaderType::kVertex ? "vert" : "frag");
-  FILE* f = fopen(txt_file_name, "wb");
+  const std::string file_name_no_extension =
+      MakeShaderDumpPath(base_path, path_prefix, ucode_data_hash_);
+
+  std::string txt_file_name, bin_file_name;
+
+  if (shader_type_ == ShaderType::kVertex) {
+    txt_file_name = file_name_no_extension + ".vert";
+    bin_file_name = file_name_no_extension + ".bin.vert";
+  } else {
+    txt_file_name = file_name_no_extension + ".frag";
+    bin_file_name = file_name_no_extension + ".bin.frag";
+  }
+
+  FILE* f = fopen(txt_file_name.c_str(), "wb");
   if (f) {
     fwrite(translated_binary_.data(), 1, translated_binary_.size(), f);
     fprintf(f, "\n\n");
@@ -72,18 +91,13 @@ std::pair<std::string, std::string> Shader::Dump(const std::string& base_path,
     fclose(f);
   }
 
-  char bin_file_name[kMaxPath];
-  std::snprintf(bin_file_name, xe::countof(bin_file_name),
-                "%s/shader_%s_%.16" PRIX64 ".bin.%s", base_path.c_str(),
-                path_prefix, ucode_data_hash_,
-                shader_type_ == ShaderType::kVertex ? "vert" : "frag");
-  f = fopen(bin_file_name, "wb");
+  f = fopen(bin_file_name.c_str(), "wb");
   if (f) {
     fwrite(ucode_data_.data(), 4, ucode_data_.size(), f);
     fclose(f);
   }
 
-  return {std::string(txt_file_name), std::string(bin_file_name)};
+  return {std::move(txt_file_name), std::move(bin_file_name)};
 }
 
 }  //  namespace gpu
